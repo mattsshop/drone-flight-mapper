@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DJI Mapping Tool – Polygon Drawing</title>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; }
+    #sidebar {
+      width: 300px;
+      padding: 15px;
+      background: #f0f0f0;
+      border-right: 1px solid #ccc;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    #map { flex-grow: 1; }
+    label { display: block; margin-top: 10px; }
+    input { width: 100%; padding: 5px; margin-top: 4px; }
+    button { margin-top: 10px; padding: 8px 12px; width: 100%; }
+  </style>
+
+  <!-- CSS for Leaflet and leaflet.pm -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.pm/dist/leaflet.pm.css" />
+</head>
+<body>
+
+  <div id="sidebar">
+    <h3>Mapping Settings</h3>
+    <label>Altitude (ft)</label>
+    <input type="number" id="altitude" value="100" />
+    <label>Side Overlap (ft)</label>
+    <input type="number" id="overlap" value="50" />
+    <label>Gimbal Pitch (°)</label>
+    <input type="number" id="pitch" value="-90" min="-90" max="0" />
+
+    <p><strong>Use map tools to draw polygon. Double-click to finish.</strong></p>
+    <button onclick="resetArea()">🧹 Clear Area</button>
+    <button onclick="generateKML()">📥 Download KML</button>
+    <button onclick="toggleMap()">🗺 Toggle Satellite</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- JS scripts -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet.pm/dist/leaflet.pm.min.js"></script>
+
+  <script>
+    let map;
+    let baseMaps = {};
+    let currentLayer = 'street';
+    let drawnPolygon = null;
+    let gridMarkers = [];
+
+    function initMap(lat = 34.05, lng = -118.25) {
+      map = L.map('map', {
+        center: [lat, lng],
+        zoom: 16,
+        maxZoom: 22
+      });
+
+      baseMaps = {
+        street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 22,
+          attribution: '&copy; OpenStreetMap contributors'
+        }),
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 22,
+          attribution: 'Tiles &copy; Esri'
+        })
+      };
+
+      baseMaps[currentLayer].addTo(map);
+      L.Control.geocoder().addTo(map);
+
+      // Add Leaflet.pm drawing controls
+      map.pm.addControls({
+        position: 'topleft',
+        drawPolygon: true,
+        editMode: true,
+        dragMode: true,
+        removalMode: true
+      });
+
+      map.on('pm:create', e => {
+        if (drawnPolygon) {
+          map.removeLayer(drawnPolygon);
+          gridMarkers.forEach(m => m.remove());
+          gridMarkers = [];
+        }
+        drawnPolygon = e.layer;
+      });
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      pos => initMap(pos.coords.latitude, pos.coords.longitude),
+      () => initMap(),
+      { timeout: 5000 }
+    );
+
+    function toggleMap() {
+      map.removeLayer(baseMaps[currentLayer]);
+      currentLayer = currentLayer === 'street' ? 'satellite' : 'street';
+      baseMaps[currentLayer].addTo(map);
+    }
+
+    function resetArea() {
+      if (drawnPolygon) {
+        map.removeLayer(drawnPolygon);
+        drawnPolygon = null;
+      }
+      gridMarkers.forEach(m => m.remove());
+      gridMarkers = [];
+    }
+
+    function generateKML() {
+      if (!drawnPolygon) {
+        alert("Draw a polygon first.");
+        return;
+      }
+
+      const altitudeFt = parseFloat(document.getElementById('altitude').value) || 328;
+      const overlapFt = parseFloat(document.getElementById('overlap').value) || 131;
+      const pitch = parseFloat(document.getElementById('pitch').value) || -90;
+      const altitudeM = altitudeFt * 0.3048;
+      const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+      const coords = drawnPolygon.getLatLngs()[0].map(pt => [pt.lng, pt.lat]);
+      coords.push(coords[0]);
+      const area = turf.polygon([coords]);
+
+      const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+
+      if (grid.features.length === 0) {
+        alert("No grid points generated. Try reducing overlap or increasing area.");
+        return;
+      }
+
+      gridMarkers.forEach(m => m.remove());
+      gridMarkers = [];
+
+      let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>DJI Custom Polygon Mission</name>`;
+
+      const footprintSize = overlapDeg;
+
+      grid.features.forEach((pt, i) => {
+        const [lng, lat] = pt.geometry.coordinates;
+        const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
+        gridMarkers.push(marker);
+
+        kml += `
+<Placemark>
+  <name>WP${i + 1}</name>
+  <description>Pitch: ${pitch}°</description>
+  <Point><coordinates>${lng},${lat},${altitudeM.toFixed(1)}</coordinates></Point>
+</Placemark>`;
+
+        const square = turf.polygon([[[
+          lng - footprintSize / 2, lat - footprintSize / 2],
+          [lng + footprintSize / 2, lat - footprintSize / 2],
+          [lng + footprintSize / 2, lat + footprintSize / 2],
+          [lng - footprintSize / 2, lat + footprintSize / 2],
+          [lng - footprintSize / 2, lat - footprintSize / 2]
+        ]]);
+
+        const coordsStr = square.geometry.coordinates[0]
+          .map(coord => `${coord[0]},${coord[1]},${altitudeM.toFixed(1)}`)
+          .join(" ");
+
+        kml += `
+<Placemark>
+  <name>Footprint WP${i + 1}</name>
+  <Style>
+    <LineStyle><color>7f00ff00</color><width>1</width></LineStyle>
+    <PolyStyle><color>3f00ff00</color></PolyStyle>
+  </Style>
+  <Polygon>
+    <outerBoundaryIs>
+      <LinearRing>
+        <coordinates>${coordsStr}</coordinates>
+      </LinearRing>
+    </outerBoundaryIs>
+  </Polygon>
+</Placemark>`;
+      });
+
+      kml += `</Document></kml>`;
+
+      const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "dji_custom_polygon.kml";
+      a.click();
+    }
+  </script>
+</body>
+</html>
