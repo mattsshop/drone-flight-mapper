@@ -31,6 +31,9 @@
     <input type="number" id="overlap" value="50" />
     <label>Gimbal Pitch (°)</label>
     <input type="number" id="pitch" value="-90" min="-90" max="0" />
+     <!-- grid angle input -->
+    <label>Grid Angle (°)</label>
+    <input type="number" id="gridAngle" value="0" step="1" />
 
     <h4>Camera Settings (Optional)</h4>
 
@@ -147,7 +150,15 @@ function generateKML() {
   coords.push(coords[0]);
 
   const area = turf.polygon([coords]);
-  const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+  const angleDeg = +document.getElementById("gridAngle").value || 0;
+  const centroid = turf.centroid(area);
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox = turf.bbox(rotatedArea);
+  const rawGrid = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const rotatedBack = turf.featureCollection(clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+));
 
   if (!grid.features.length) return alert("No grid points generated.");
 
@@ -270,7 +281,23 @@ function previewGrid() {
   coords.push(coords[0]);
 
   const area = turf.polygon([coords]);
-  const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+  const angleDeg = +document.getElementById("gridAngle").value || 0;
+  const centroid = turf.centroid(area);
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox = turf.bbox(rotatedArea);
+  const rawGrid = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const rotatedBack = turf.featureCollection(clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+  ));
+
+  rotatedBack.features.forEach(pt => {
+  const [lng, lat] = pt.geometry.coordinates;
+  const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
+  previewMarkers.push(marker);
+  pathCoords.push([lat, lng]);
+});
+
   if (!grid.features.length) return alert("No preview points generated.");
 
   let pathCoords = [];
