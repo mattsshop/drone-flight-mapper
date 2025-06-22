@@ -103,55 +103,39 @@
       gridMarkers = [];
     }
 
-function generateKML() {
-  if (!drawnPolygon) return alert("Draw a polygon first.");
-
-  const altitudeFt = +document.getElementById('altitude').value || 100;
-  const overlapFt = +document.getElementById('overlap').value || 50;
-  const pitch = +document.getElementById('pitch').value || -90;
-  const altitudeM = altitudeFt * 0.3048;
-  const overlapDeg = (overlapFt * 0.3048) / 111000;
-  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
-  coords.push(coords[0]);
-
-  const area = turf.polygon([coords]);
-  const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
-
-  if (!grid.features.length) return alert("No grid points generated.");
-
-  gridMarkers.forEach(m => m.remove());
-  gridMarkers = [];
-
-  let pathCoords = []; // Store LatLngs for polyline path
-  let kml = `<?xml version="1.0" encoding="UTF-8"?>
+    function generateKML() {
+      if (!drawnPolygon) return alert("Draw a polygon first.");
+      const altitudeFt = +document.getElementById('altitude').value || 100;
+      const overlapFt = +document.getElementById('overlap').value || 50;
+      const pitch = +document.getElementById('pitch').value || -90;
+      const altitudeM = altitudeFt * 0.3048;
+      const overlapDeg = (overlapFt * 0.3048) / 111000;
+      const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+      coords.push(coords[0]);
+      const area = turf.polygon([coords]);
+      const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+      if (!grid.features.length) return alert("No grid points generated.");
+      gridMarkers.forEach(m => m.remove()); gridMarkers = [];
+      let kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
 <name>DJI Custom Polygon Mission</name>`;
-
-  grid.features.forEach((pt, i) => {
-    const [lng, lat] = pt.geometry.coordinates;
-    gridMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map));
-    pathCoords.push([lat, lng]);
-    kml += `
+      grid.features.forEach((pt, i) => {
+        const [lng, lat] = pt.geometry.coordinates;
+        gridMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map));
+        kml += `
 <Placemark>
 <name>WP${i + 1}</name>
 <description>Pitch: ${pitch}°</description>
 <Point><coordinates>${lng},${lat},${altitudeM.toFixed(1)}</coordinates></Point>
 </Placemark>`;
-  });
-
-  // Add polyline path to map
-  L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
-
-  kml += "</Document>\n</kml>";
-  const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "dji_custom_polygon.kml";
-  a.click();
-}
-
+      });
+      kml += "</Document>\\n";
+      kml += "</kml>";
+      const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "dji_custom_polygon.kml"; a.click();
+    }
 
     // Litchi export removed
 function generateLitchi() {
