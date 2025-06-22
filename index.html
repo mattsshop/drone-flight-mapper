@@ -30,6 +30,19 @@
     <label>Side Overlap (ft)</label>
     <input type="number" id="overlap" value="50" />
     <label>Gimbal Pitch (°)</label>
+    <h4>Camera Settings (Optional)</h4>
+
+<label>Sensor Width (mm)</label>
+<input type="number" id="sensorWidth" value="13.2" />
+<label>Focal Length (mm)</label>
+<input type="number" id="focalLength" value="8.8" />
+<label>Image Width (px)</label>
+<input type="number" id="imageWidth" value="5472" />
+<label>Desired Side Overlap (%)</label>
+<input type="number" id="desiredOverlap" value="70" />
+<button onclick="calculateOverlap()">📷 Suggest Overlap</button>
+<p id="suggestedOverlap"></p>
+
     <input type="number" id="pitch" value="-90" min="-90" max="0" />
     <p><strong>Use the toolbar on the map to draw polygons.</strong></p>
     <button onclick="resetArea()">🧹 Clear Area</button>
@@ -263,6 +276,28 @@ function previewGrid() {
   // Draw the connecting polyline
   previewLine = L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
 }
+
+function calculateOverlap() {
+  const altitudeFt = +document.getElementById("altitude").value || 100;
+  const sensorWidth = +document.getElementById("sensorWidth").value || 13.2;
+  const focalLength = +document.getElementById("focalLength").value || 8.8;
+  const imageWidth = +document.getElementById("imageWidth").value || 5472;
+  const desiredOverlap = +document.getElementById("desiredOverlap").value || 70;
+
+  const altitudeM = altitudeFt * 0.3048;
+
+  const gsd = (sensorWidth * altitudeM * 100) / (focalLength * imageWidth); // cm/pixel
+  const groundWidthM = (imageWidth * gsd) / 100;
+
+  const step = groundWidthM * (1 - desiredOverlap / 100); // meters
+  const stepFt = step / 0.3048;
+
+  document.getElementById("overlap").value = stepFt.toFixed(1);
+  document.getElementById("suggestedOverlap").textContent =
+    `Image covers ~${groundWidthM.toFixed(1)}m. Suggested spacing: ${stepFt.toFixed(1)} ft`;
+}
+
+
 
     
   </script>
