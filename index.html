@@ -160,10 +160,10 @@ function generateKML() {
     turf.transformRotate(pt, angleDeg, { pivot: centroid })
 ));
 
-  if (!grid.features.length) return alert("No grid points generated.");
+  if (!rotatedBack.features.length) return alert("No grid points generated.");
 
-  gridMarkers.forEach(m => m.remove());
-  gridMarkers = [];
+gridMarkers.forEach(m => m.remove());
+gridMarkers = [];
 
   let pathCoords = []; // Store LatLngs for polyline path
   let kml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -171,7 +171,7 @@ function generateKML() {
 <Document>
 <name>DJI Custom Polygon Mission</name>`;
 
-  grid.features.forEach((pt, i) => {
+    rotatedBack.features.forEach((pt, i) => {
     const [lng, lat] = pt.geometry.coordinates;
     gridMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map));
     pathCoords.push([lat, lng]);
@@ -291,18 +291,11 @@ function previewGrid() {
     turf.transformRotate(pt, angleDeg, { pivot: centroid })
   ));
 
-  rotatedBack.features.forEach(pt => {
-  const [lng, lat] = pt.geometry.coordinates;
-  const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
-  previewMarkers.push(marker);
-  pathCoords.push([lat, lng]);
-});
-
-  if (!grid.features.length) return alert("No preview points generated.");
+  if (!rotatedBack.features.length) return alert("No preview points generated.");
 
   let pathCoords = [];
 
-  grid.features.forEach(pt => {
+  rotatedBack.features.forEach(pt => {
     const [lng, lat] = pt.geometry.coordinates;
     const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
     previewMarkers.push(marker);
@@ -312,6 +305,7 @@ function previewGrid() {
   // Draw the connecting polyline
   previewLine = L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
 }
+
 
 function calculateOverlap() {
   const altitudeFt = +document.getElementById("altitude").value || 100;
