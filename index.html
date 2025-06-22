@@ -97,12 +97,21 @@
       baseMaps[currentLayer].addTo(map);
     }
 
-    function resetArea() {
-      if (drawnPolygon) map.removeLayer(drawnPolygon);
-      drawnPolygon = null;
-      gridMarkers.forEach(m => m.remove());
-      gridMarkers = [];
-    }
+function resetArea() {
+  if (drawnPolygon) map.removeLayer(drawnPolygon);
+  drawnPolygon = null;
+
+  gridMarkers.forEach(m => m.remove());
+  gridMarkers = [];
+
+  previewMarkers.forEach(m => m.remove());
+  previewMarkers = [];
+
+  if (previewLine) {
+    map.removeLayer(previewLine);
+    previewLine = null;
+  }
+}
 
 function generateKML() {
   if (!drawnPolygon) return alert("Draw a polygon first.");
