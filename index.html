@@ -38,6 +38,7 @@
     <button onclick="loadMap()">📂 Load Map</button>
     <button onclick="toggleMap()">🗺 Toggle Satellite</button>
     <button onclick="askLocation()">📍 Use My Location</button>
+    <button onclick="previewGrid()">🔍 Preview Waypoints</button>
   </div>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -214,6 +215,46 @@ function generateLitchi() {
     { enableHighAccuracy: true, timeout: 5000 }
   );
 }
+
+let previewMarkers = [];
+let previewLine = null;
+
+function previewGrid() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  // Clear previous preview
+  previewMarkers.forEach(m => m.remove());
+  previewMarkers = [];
+  if (previewLine) {
+    map.removeLayer(previewLine);
+    previewLine = null;
+  }
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const altitudeM = altitudeFt * 0.3048;
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  coords.push(coords[0]);
+
+  const area = turf.polygon([coords]);
+  const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+  if (!grid.features.length) return alert("No preview points generated.");
+
+  let pathCoords = [];
+
+  grid.features.forEach(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
+    previewMarkers.push(marker);
+    pathCoords.push([lat, lng]);
+  });
+
+  // Draw the connecting polyline
+  previewLine = L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
+}
+
     
   </script>
 </body>
