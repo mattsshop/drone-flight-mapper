@@ -295,6 +295,11 @@ function previewGrid() {
 
   let pathCoords = [];
 
+  const imageWidthM = groundWidthM || 20; // reuse from calculateOverlap or hardcode
+const imageHeightM = groundHeightM || 15;
+drawImageRectangles(pathCoords, imageWidthM, imageHeightM);
+
+
   rotatedBack.features.forEach(pt => {
     const [lng, lat] = pt.geometry.coordinates;
     const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
@@ -306,6 +311,24 @@ function previewGrid() {
   previewLine = L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
 }
 
+function drawImageRectangles(points, widthM, heightM) {
+  const rectangles = [];
+
+  points.forEach(([lat, lng]) => {
+    const center = turf.point([lng, lat]);
+    const rect = turf.rectangle([
+      lng - widthM / 2 / 111320,
+      lat - heightM / 2 / 111320,
+      lng + widthM / 2 / 111320,
+      lat + heightM / 2 / 111320
+    ]);
+    const bounds = rect.geometry.coordinates[0].map(([x, y]) => [y, x]);
+    const rectLayer = L.polygon(bounds, { color: "orange", weight: 1, fillOpacity: 0.1 }).addTo(map);
+    rectangles.push(rectLayer);
+  });
+
+  return rectangles;
+}
 
 function calculateOverlap() {
   const altitudeFt = +document.getElementById("altitude").value || 100;
