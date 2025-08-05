@@ -1,5 +1,12 @@
 <!DOCTYPE html>
 <html>
+<!-- Google Maps API -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAtJhug_LwAglT-pJL3RUFyOStmFVEnx7M&libraries=places"></script>
+
+<!-- GoogleMutant plugin for Leaflet -->
+<script src="https://unpkg.com/leaflet.gridlayer.googlemutant/Leaflet.GoogleMutant.js"></script>
+
+  
 <head>
   <title>DJI Mapping Tool – Full Bundle</title>
   <meta charset="utf-8" />
@@ -85,15 +92,22 @@
       });
 
       baseMaps = {
-        street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 22,
-          attribution: '&copy; OpenStreetMap contributors'
-        }),
-        satellite: L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          maxZoom: 22,
-          attribution: 'Tiles &copy; Esri'
-        })
-      };
+  street: L.gridLayer.googleMutant({
+    type: 'roadmap' // Google Maps Roadmap
+  }),
+  satellite: L.gridLayer.googleMutant({
+    type: 'satellite' // Google Maps Satellite
+  }),
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 22,
+    attribution: '&copy; OpenStreetMap contributors'
+  }),
+  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 22,
+    attribution: 'Tiles &copy; Esri'
+  })
+};
+
 
       baseMaps[currentLayer].addTo(map);
       L.Control.geocoder().addTo(map);
