@@ -98,12 +98,21 @@
     let drawnPolygon = null;
     let gridMarkers = [];
 
-    function initMap(lat = 34.05, lng = -118.25) {
-      map = L.map('map', {
-        center: [lat, lng],
-        zoom: 16,
-        maxZoom: 22
-      });
+function initMap(lat = 34.05, lng = -118.25) {
+  console.log("Leaflet version:", L.version);
+  console.log("GoogleMutant function exists:", !!(L.gridLayer && L.gridLayer.googleMutant));
+
+  if (!L.gridLayer || !L.gridLayer.googleMutant) {
+    alert("GoogleMutant plugin not loaded! Check script order or network tab.");
+    return;
+  }
+
+  map = L.map('map', {
+    center: [lat, lng],
+    zoom: 16,
+    maxZoom: 22
+  });
+
 
       baseMaps = {
   street: L.gridLayer.googleMutant({
