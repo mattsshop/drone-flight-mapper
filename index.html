@@ -41,6 +41,9 @@
 
   <!-- Turf.js -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 </head>
 
 
@@ -82,6 +85,9 @@
     <p><strong>Use the toolbar on the map to draw polygons.</strong></p>
     <button onclick="resetArea()">🧹 Clear Area</button>
     <button onclick="generateKML()">📥 Download KML</button>
+    
+    <button onclick="generateKMZ()">📦 Download KMZ</button>
+    
         <button onclick="saveMap()">💾 Save Map</button>
     <button onclick="loadMap()">📂 Load Map</button>
     <button onclick="toggleMap()">🗺 Toggle Satellite</button>
@@ -243,6 +249,62 @@ gridMarkers = [];
   a.download = "dji_custom_polygon.kml";
   a.click();
 }
+
+async function generateKMZ() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const pitch = +document.getElementById('pitch').value || -90;
+  const altitudeM = altitudeFt * 0.3048;
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  coords.push(coords[0]);
+
+  const area = turf.polygon([coords]);
+  const angleDeg = +document.getElementById("gridAngle").value || 0;
+  const centroid = turf.centroid(area);
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox = turf.bbox(rotatedArea);
+  const rawGrid = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const rotatedBack = turf.featureCollection(clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+  ));
+
+  if (!rotatedBack.features.length) return alert("No grid points generated.");
+
+  let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>DJI Custom Polygon Mission</name>`;
+
+  rotatedBack.features.forEach((pt, i) => {
+    const [lng, lat] = pt.geometry.coordinates;
+    kml += `
+<Placemark>
+<name>WP${i + 1}</name>
+<description>Pitch: ${pitch}°</description>
+<Point><coordinates>${lng},${lat},${altitudeM.toFixed(1)}</coordinates></Point>
+</Placemark>`;
+  });
+
+  kml += "</Document>\n</kml>";
+
+  // Use JSZip to create KMZ
+  const zip = new JSZip();
+  zip.file("doc.kml", kml);
+  const blob = await zip.generateAsync({ type: "blob" });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dji_custom_polygon.kmz";
+  a.click();
+}
+    
+    
 
 
     // Litchi export removed
