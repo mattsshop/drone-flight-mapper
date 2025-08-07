@@ -44,6 +44,9 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+
+
+
 </head>
 
 
@@ -86,7 +89,8 @@
     <button onclick="resetArea()">🧹 Clear Area</button>
     <button onclick="generateKML()">📥 Download KML</button>
     
-  
+  <button onclick="generateDJIKMZ()">📦 Download DJI KMZ</button>
+
     
         <button onclick="saveMap()">💾 Save Map</button>
     <button onclick="loadMap()">📂 Load Map</button>
@@ -250,7 +254,90 @@ gridMarkers = [];
   a.click();
 }
 
-    
+    async function generateDJIKMZ() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const pitch = +document.getElementById('pitch').value || -90;
+  const speed = 3.1;
+  const altitudeM = altitudeFt * 0.3048;
+
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  coords.push(coords[0]);
+
+  let wpml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.uav.com/wpmz/1.0.2">\n  <Document>
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:globalTransitionalSpeed>${speed}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo>
+        <wpml:droneEnumValue>68</wpml:droneEnumValue>
+        <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
+      </wpml:droneInfo>
+    </wpml:missionConfig>
+    <Folder>
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>
+      <wpml:waylineId>0</wpml:waylineId>`;
+
+  coords.forEach((c, i) => {
+    wpml += `
+      <Placemark>
+        <Point>
+          <coordinates>${c[0]},${c[1]}</coordinates>
+        </Point>
+        <wpml:index>${i}</wpml:index>
+        <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
+        <wpml:waypointSpeed>${speed}</wpml:waypointSpeed>
+        <wpml:waypointHeadingParam>
+          <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
+          <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
+          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
+          <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
+        </wpml:waypointHeadingParam>
+        <wpml:waypointTurnParam>
+          <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
+          <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
+        </wpml:waypointTurnParam>
+        <wpml:useStraightLine>1</wpml:useStraightLine>
+        <wpml:actionGroup>
+          <wpml:actionGroupId>1</wpml:actionGroupId>
+          <wpml:actionGroupStartIndex>0</wpml:actionGroupStartIndex>
+          <wpml:actionGroupEndIndex>0</wpml:actionGroupEndIndex>
+          <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
+          <wpml:actionTrigger>
+            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+          </wpml:actionTrigger>
+          <wpml:action>
+            <wpml:actionId>1</wpml:actionId>
+            <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+        </wpml:actionGroup>
+      </Placemark>`;
+  });
+
+  wpml += `\n    </Folder>\n  </Document>\n</kml>`;
+
+  const zip = new JSZip();
+  zip.file("wpmz/template.kml", "<?xml version='1.0'?><kml></kml>");
+  zip.file("wpmz/waylines.wpml", wpml);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dji_rc2_mission.kmz";
+  a.click();
+}
+
     
 
 
