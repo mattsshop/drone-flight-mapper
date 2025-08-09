@@ -53,7 +53,7 @@
   
 <body>
   <div id="sidebar">
-    <label>VER 0.0.6</label>
+    <label>VER 0.0.7</label>
     <h3>Mapping Settings</h3>
     <label>Altitude (ft)</label>
     <input type="number" id="altitude" value="100" />
@@ -96,17 +96,18 @@
     <!-- <button onclick="generateKML()">📥 Download KML</button> -->
 
     <!-- <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button> -->
-
+    <button onclick="previewGrid()">🔍 Generate Waypoints</button>
     <button id="btnDownload" onclick= "generateDJIKMZ()" >📦 Generate & Download KMZ</button>
 
     <!-- <button onclick="generateDJIKMZ()">📦 Download DJI KMZ</button> -->
 
     
-    <button onclick="saveMap()">💾 Save Map</button>
-    <button onclick="loadMap()">📂 Load Map</button>
+    
     <button onclick="toggleMap()">🗺 Toggle Satellite</button>
     <button onclick="askLocation()">📍 Use My Location</button>
-    <button onclick="previewGrid()">🔍 Preview Waypoints</button>
+    <button onclick="saveMap()">💾 Save Map</button>
+    <button onclick="loadMap()">📂 Load Map</button>
+    
   </div>
   <div id="map"></div>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
