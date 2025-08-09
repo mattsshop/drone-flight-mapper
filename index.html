@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.2</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.3</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -610,7 +610,7 @@ const clampPitch = Math.max(-90, Math.min(0, pitchRaw)); // clamp to -90..0
     return alert("No grid points found. Try lowering spacing (Overlap ft), increasing area, or setting angle to 0.");
   }
 
-  console.log("KMZ export waypoint count:", waypoints.length, "speed(m/s):", sp, "pitch:", clampPitch);
+  console.log("KMZ export waypoint count:", waypoints.length, "speed(m/s):", spInt, "pitch:", clampPitch);
 
 // Build files
 const templateKml  = buildTemplateKml(spDecStr);                       // decimal in template
