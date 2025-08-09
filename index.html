@@ -122,7 +122,7 @@
 function buildTemplateKml(speedMps) {
   const now = Date.now();
   return `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.uav.com/wpmz/1.0.2">
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
   <Document>
     <wpml:author>fly</wpml:author>
     <wpml:createTime>${now}</wpml:createTime>
@@ -142,16 +142,14 @@ function buildTemplateKml(speedMps) {
 </kml>`;
 }
 
+
 function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
-  // distance/duration for Folder (RC2 likes these present)
-  let distance = 0;
-  for (let i = 1; i < lonLatPairs.length; i++) {
-    distance += haversineMeters(lonLatPairs[i-1], lonLatPairs[i]);
-  }
-  const duration = distance / speedMps; // seconds (rough)
+  // RC2 accepts 0 for distance/duration; keep it simple and consistent with your good file
+  const distanceKm = 0;
+  const durationS = 0;
 
   let wpml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.uav.com/wpmz/1.0.2">
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
   <Document>
     <wpml:missionConfig>
       <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
@@ -168,18 +166,22 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:templateId>0</wpml:templateId>
       <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>
       <wpml:waylineId>0</wpml:waylineId>
-      <wpml:distance>${(distance/1000).toFixed(3)}</wpml:distance>
-      <wpml:duration>${duration.toFixed(1)}</wpml:duration>
-      <wpml:autoFlightSpeed>${speedMps}</wpml:autoFlightSpeed>`;
-  
+      <wpml:distance>${distanceKm}</wpml:distance>
+      <wpml:duration>${durationS}</wpml:duration>
+      <wpml:autoFlightSpeed>${Math.round(speedMps)}</wpml:autoFlightSpeed>`;
+
   lonLatPairs.forEach((c, i) => {
     const [lon, lat] = c;
     wpml += `
       <Placemark>
-        <Point><coordinates>${lon},${lat}</coordinates></Point>
+        <Point>
+          <coordinates>
+            ${lon},${lat}
+          </coordinates>
+        </Point>
         <wpml:index>${i}</wpml:index>
         <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
-        <wpml:waypointSpeed>${speedMps}</wpml:waypointSpeed>
+        <wpml:waypointSpeed>${Math.round(speedMps)}</wpml:waypointSpeed>
 
         <wpml:waypointHeadingParam>
           <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
@@ -225,6 +227,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
 </kml>`;
   return wpml;
 }
+
 
 
 function initMap(lat = 34.05, lng = -118.25) {
@@ -372,23 +375,20 @@ gridMarkers = [];
   a.click();
 }
 
-    async function generateDJIKMZ() {
+async function generateDJIKMZ() {
   if (!drawnPolygon) return alert("Draw a polygon first.");
 
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM = altitudeFt * 0.3048;
   const pitchDeg = +document.getElementById('pitch').value || -90;
-  const speedMps = 3.1; // you can surface this as an input later
+  const speedMps = 8; // match your working RC2 file
 
-  // Use your polygon vertices as waypoints (lon,lat)
   const lonLatPairs = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
   if (lonLatPairs.length < 2) return alert("Not enough points.");
 
-  // Build the two required files
   const templateKml = buildTemplateKml(speedMps);
   const waylinesWpml = buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg);
 
-  // KMZ: /wpmz/template.kml + /wpmz/waylines.wpml
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
   zip.file("wpmz/waylines.wpml", waylinesWpml);
@@ -400,6 +400,7 @@ gridMarkers = [];
   a.download = "dji_rc2_mission.kmz";
   a.click();
 }
+
 
     
 
