@@ -329,8 +329,9 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
 
 lonLatPairs.forEach((c, i0) => {
-  const idx = i0 + 1; // 1-based index for RC2
+  const idx = i0;                   // 0-based index (safer on some RC2 builds)
   const [lon, lat] = c;
+
   s += `
     <Placemark>
       <Point>
@@ -353,7 +354,7 @@ lonLatPairs.forEach((c, i0) => {
       </wpml:waypointHeadingParam>
 
       <wpml:waypointTurnParam>
-        <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
+        <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
         <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
       </wpml:waypointTurnParam>
 
@@ -368,6 +369,7 @@ lonLatPairs.forEach((c, i0) => {
           <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
         </wpml:actionTrigger>
 
+        <!-- single safe action: gimbal tilt -->
         <wpml:action>
           <wpml:actionId>1</wpml:actionId>
           <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
@@ -375,23 +377,10 @@ lonLatPairs.forEach((c, i0) => {
             <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
           </wpml:actionActuatorFuncParam>
         </wpml:action>
-
-        <wpml:action>
-          <wpml:actionId>2</wpml:actionId>
-          <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
-          <wpml:actionActuatorFuncParam>
-            <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-            <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
-          </wpml:actionActuatorFuncParam>
-        </wpml:action>
       </wpml:actionGroup>
-
-      <wpml:waypointGimbalHeadingParam>
-        <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
-        <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
-      </wpml:waypointGimbalHeadingParam>
     </Placemark>`;
 });
+
 
 
   s += `
