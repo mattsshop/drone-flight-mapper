@@ -300,8 +300,10 @@ function buildTemplateKml(speedMps) {
 
 
 function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
-  const sp = Math.max(1, Math.round(speedMps));            // integers only
-  const clampPitch = Math.max(-90, Math.min(0, pitchDeg)); // -90..0
+  // DJI tends to like integers here
+  const sp = Math.max(1, Math.round(speedMps));
+  // Clamp gimbal
+  const clampPitch = Math.max(-90, Math.min(0, pitchDeg));
 
   let s = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
@@ -325,8 +327,9 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:duration>0</wpml:duration>
       <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
 
+  // 0-based indices + single safe action (gimbalRotate).
   lonLatPairs.forEach((c, i0) => {
-    const idx = i0 + 1; // 1-based index for RC2
+    const idx = i0; // 0-based keeps older RC2 builds happy
     const [lon, lat] = c;
     s += `
       <Placemark>
@@ -342,15 +345,10 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
 
         <wpml:waypointHeadingParam>
           <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
-          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
-          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
-          <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
-          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
-          <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
         </wpml:waypointHeadingParam>
 
         <wpml:waypointTurnParam>
-          <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
+          <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
           <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
         </wpml:waypointTurnParam>
 
@@ -372,21 +370,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
               <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
             </wpml:actionActuatorFuncParam>
           </wpml:action>
-
-          <wpml:action>
-            <wpml:actionId>2</wpml:actionId>
-            <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
-            <wpml:actionActuatorFuncParam>
-              <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
-            </wpml:actionActuatorFuncParam>
-          </wpml:action>
         </wpml:actionGroup>
-
-        <wpml:waypointGimbalHeadingParam>
-          <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
-          <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
-        </wpml:waypointGimbalHeadingParam>
       </Placemark>`;
   });
 
