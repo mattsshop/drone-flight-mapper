@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.8</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.9</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -328,57 +328,75 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, sp, clampPitch) {
       <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
 
 lonLatPairs.forEach((c, i0) => {
-  const idx = i0; // 0-based to avoid crash on your unit
-  const [lon, lat] = c;
 
-  s += `
-    <Placemark>
-      <Point>
-        <coordinates>
-          ${lon},${lat}
-        </coordinates>
-      </Point>
+const idx = i0;      // 0-based (kept to avoid crash)
+const [lon, lat] = c;
 
-      <wpml:index>${idx}</wpml:index>
-      <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
-      <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
+s += `
+  <Placemark>
+    <Point>
+      <coordinates>
+        ${lon},${lat}
+      </coordinates>
+    </Point>
 
-      <wpml:waypointHeadingParam>
-        <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
-      </wpml:waypointHeadingParam>
+    <wpml:index>${idx}</wpml:index>
+    <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
+    <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
 
-      <wpml:waypointTurnParam>
-        <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
-        <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
-      </wpml:waypointTurnParam>
+    <wpml:waypointHeadingParam>
+      <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+      <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+      <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
+      <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
+    </wpml:waypointHeadingParam>
 
-      <wpml:useStraightLine>1</wpml:useStraightLine>
+    <wpml:waypointTurnParam>
+      <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
+      <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
+    </wpml:waypointTurnParam>
 
-      <!-- STATE before actions so UI can show tilt -->
-      <wpml:waypointGimbalHeadingParam>
-        <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
-        <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
-      </wpml:waypointGimbalHeadingParam>
+    <wpml:useStraightLine>1</wpml:useStraightLine>
 
-      <!-- Single safe action bound to same index -->
-      <wpml:actionGroup>
-        <wpml:actionGroupId>1</wpml:actionGroupId>
-        <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
-        <wpml:actionGroupEndIndex>${idx}</wpml:actionGroupEndIndex>
-        <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
-        <wpml:actionTrigger>
-          <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
-        </wpml:actionTrigger>
+    <!-- STATE first; set pitch to 0 like your working file -->
+    <wpml:waypointGimbalHeadingParam>
+      <wpml:waypointGimbalPitchAngle>0</wpml:waypointGimbalPitchAngle>
+      <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
+    </wpml:waypointGimbalHeadingParam>
 
-        <wpml:action>
-          <wpml:actionId>1</wpml:actionId>
-          <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
-          <wpml:actionActuatorFuncParam>
-            <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
-          </wpml:actionActuatorFuncParam>
-        </wpml:action>
-      </wpml:actionGroup>
-    </Placemark>`;
+    <!-- ACTIONS bound to the same index -->
+    <wpml:actionGroup>
+      <wpml:actionGroupId>1</wpml:actionGroupId>
+      <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
+      <wpml:actionGroupEndIndex>${idx}</wpml:actionGroupEndIndex>
+      <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
+      <wpml:actionTrigger>
+        <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+      </wpml:actionTrigger>
+
+      <!-- Use gimbalEvenlyRotate and include payloadPositionIndex -->
+      <wpml:action>
+        <wpml:actionId>1</wpml:actionId>
+        <wpml:actionActuatorFunc>gimbalEvenlyRotate</wpml:actionActuatorFunc>
+        <wpml:actionActuatorFuncParam>
+          <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
+          <wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle>
+          <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+        </wpml:actionActuatorFuncParam>
+      </wpml:action>
+
+      <!-- keep takePhoto if you want the shutter -->
+      <wpml:action>
+        <wpml:actionId>2</wpml:actionId>
+        <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
+        <wpml:actionActuatorFuncParam>
+          <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+          <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
+        </wpml:actionActuatorFuncParam>
+      </wpml:action>
+    </wpml:actionGroup>
+  </Placemark>`;
+
 });
 
 
