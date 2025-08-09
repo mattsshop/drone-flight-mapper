@@ -145,31 +145,35 @@ async function generateDJIKMZ() {
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM  = altitudeFt * 0.3048;
 
-  const pitchDegIn = +document.getElementById('pitch').value || -90;
-  const clampPitch  = Math.max(-90, Math.min(0, pitchDegIn)); // RC2 needs -90..0
+  const pitchIn    = +document.getElementById('pitch').value || -90;
+  const clampPitch = Math.max(-90, Math.min(0, pitchIn));   // RC2 requires -90..0
 
-  const speedIn = parseInt(document.getElementById('speed').value, 10);
-  const sp = Math.max(1, Math.min(15, isNaN(speedIn) ? 8 : speedIn)); // integer 1..15
+  const speedIn    = parseInt(document.getElementById('speed').value, 10);
+  const sp         = Math.max(1, Math.min(15, isNaN(speedIn) ? 8 : speedIn)); // 1..15, integer
 
-  // build or fetch your waypoint list (grid)
-  let waypoints = getWaypointsLonLat();
-  if (!waypoints.length) waypoints = computeGridLonLatFromPolygon();
-  if (waypoints.length < 2) return alert("No grid points found.");
+  // get your grid points
+  let waypoints = (window.previewMarkers?.length
+    ? previewMarkers.map(m => [m.getLatLng().lng, m.getLatLng().lat])
+    : computeGridLonLatFromPolygon());
 
+  if (!waypoints || waypoints.length < 2) return alert("No grid points found.");
+
+  // build files
   const templateKml  = buildTemplateKml(sp);
   const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, sp, clampPitch);
 
+  // pack KMZ
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
   zip.file("wpmz/waylines.wpml", waylinesWpml);
 
   const blob = await zip.generateAsync({ type: "blob" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
   a.download = "dji_rc2_mission.kmz";
   a.click();
 }
+
 
 
 
