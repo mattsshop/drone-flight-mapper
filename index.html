@@ -338,6 +338,45 @@ function resetArea() {
   }
 }
 
+
+function computeGridLonLatFromPolygon() {
+  if (!drawnPolygon) return [];
+
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const angleDeg  = +document.getElementById('gridAngle').value || 0;
+
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+  // polygon to [lng,lat] ring
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  if (!coords.length) return [];
+  // close ring for Turf
+  coords.push(coords[0]);
+
+  const area     = turf.polygon([coords]);
+  const centroid = turf.centroid(area);
+
+  // rotate polygon to align grid
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox        = turf.bbox(rotatedArea);
+
+  // generate and clip grid
+  const rawGrid     = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+
+  // rotate points back
+  const rotatedBack = clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+  );
+
+  // return as [lon,lat] in grid order
+  return rotatedBack.map(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    return [lng, lat];
+  });
+}
+
+
 function generateKML() {
   if (!drawnPolygon) return alert("Draw a polygon first.");
 
@@ -397,28 +436,40 @@ gridMarkers = [];
 
 
 async function generateDJIKMZ() {
-  const waypoints = getWaypointsLonLat();
-  if (!waypoints.length) return alert("No waypoints. Run Preview first or draw a polygon.");
+  if (!drawnPolygon) return alert("Draw a polygon first.");
 
   const altitudeFt = +document.getElementById('altitude').value || 100;
-  const altitudeM = altitudeFt * 0.3048;
-  const pitchDeg = +document.getElementById('pitch').value || -90;
-  const speedMps = 8; // matches your working RC2 file
+  const altitudeM  = altitudeFt * 0.3048;
+  const pitchDeg   = +document.getElementById('pitch').value || -90;
+  const speedMps   = 8; // match your working RC2 file
 
-  const templateKml = buildTemplateKml(speedMps);
+  // 1) prefer preview markers (grid), else compute a fresh grid
+  let waypoints = getWaypointsLonLat();
+  if (!waypoints.length) {
+    waypoints = computeGridLonLatFromPolygon();
+  }
+
+  if (waypoints.length < 2) {
+    return alert("No grid points found. Increase area or decrease spacing/overlap.");
+  }
+
+  // 2) Build files with DJI 1.0.6 namespace and required fields
+  const templateKml  = buildTemplateKml(speedMps);
   const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, speedMps, pitchDeg);
 
+  // 3) KMZ: /wpmz/template.kml + /wpmz/waylines.wpml
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
   zip.file("wpmz/waylines.wpml", waylinesWpml);
 
   const blob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = "dji_rc2_mission.kmz";
   a.click();
 }
+
 
 
 
