@@ -88,6 +88,9 @@
     <p><strong>Use the toolbar on the map to draw polygons.</strong></p>
     <button onclick="resetArea()">🧹 Clear Area</button>
     <button onclick="generateKML()">📥 Download KML</button>
+
+    <button onclick="loadKMZ()">📂 Load KMZ</button>
+
     
   <button onclick="generateDJIKMZ()">📦 Download DJI KMZ</button>
 
@@ -120,23 +123,103 @@
 }
 
 
+
 function getWaypointsLonLat() {
-  // Prefer preview markers (grid order)
-  if (window.previewMarkers && previewMarkers.length > 0) {
-    return previewMarkers.map(m => {
-      const ll = m.getLatLng();
-      return [ll.lng, ll.lat]; // lon,lat
-    });
+  // If user already hit “Preview”, use those (keeps the same order you drew)
+  if (window.previewMarkers && previewMarkers.length) {
+    return previewMarkers.map(m => [m.getLatLng().lng, m.getLatLng().lat]);
   }
-  // Fallback: polygon vertices
-  if (window.drawnPolygon) {
-    const latlngs = drawnPolygon.getLatLngs()[0];
-    if (latlngs && latlngs.length) {
-      return latlngs.map(p => [p.lng, p.lat]);
-    }
-  }
-  return [];
+  // Otherwise, compute a fresh grid
+  return computeGridLonLatFromPolygon();
 }
+
+
+
+async function loadKMZ() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.kmz';
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Prefer DJI RC2 file first
+    let kmlText = null;
+    if (zip.file('wpmz/waylines.wpml')) {
+      kmlText = await zip.file('wpmz/waylines.wpml').async('text');
+    } else if (zip.file('doc.kml')) {
+      kmlText = await zip.file('doc.kml').async('text');
+    } else {
+      // Fallback: first *.kml inside zip
+      const anyKml = Object.values(zip.files).find(f => f.name.toLowerCase().endsWith('.kml'));
+      if (anyKml) kmlText = await anyKml.async('text');
+    }
+    if (!kmlText) return alert('No KML/WPML found in KMZ.');
+
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(kmlText, 'text/xml');
+    const placemarks = xml.getElementsByTagName('Placemark');
+
+    const pts = [];
+    for (let i = 0; i < placemarks.length; i++) {
+      const coordsEl = placemarks[i].getElementsByTagName('coordinates')[0];
+      if (!coordsEl) continue;
+      // DJI stores "lon,lat" (possibly with whitespace/newlines)
+      const raw = coordsEl.textContent.trim();
+      if (!raw) continue;
+      const parts = raw.split(/[\s,]+/).filter(Boolean);
+      if (parts.length < 2) continue;
+      const lon = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+    }
+
+    if (!pts.length) return alert('No point Placemarks found.');
+    const poly = L.polyline(pts, { weight: 2 }).addTo(map);
+    pts.forEach(p => L.circleMarker(p, { radius: 4 }).addTo(map));
+    map.fitBounds(poly.getBounds());
+  };
+  input.click();
+}
+
+
+function computeGridLonLatFromPolygon() {
+  if (!drawnPolygon) return [];
+
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const angleDeg  = +document.getElementById('gridAngle').value || 0;
+
+  // Convert spacing to degrees (≈ meters/111000)
+  const spacingDeg = (overlapFt * 0.3048) / 111000;
+
+  const ring = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  if (!ring.length) return [];
+  const closed = ring[0][0] === ring[ring.length-1][0] && ring[0][1] === ring[ring.length-1][1]
+    ? ring : [...ring, ring[0]];
+
+  const area     = turf.polygon([closed]);
+  const centroid = turf.centroid(area);
+
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox        = turf.bbox(rotatedArea);
+
+  // Build grid, clip to polygon, rotate back
+  const rawGrid     = turf.pointGrid(bbox, spacingDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const features    = clippedGrid.features.map(pt => turf.transformRotate(pt, angleDeg, { pivot: centroid }));
+
+  // Extract lon,lat
+  const pts = features.map(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    return [lng, lat];
+  });
+
+  return pts;
+}
+
+
 
 function buildTemplateKml(speedMps) {
   const now = Date.now();
@@ -441,23 +524,17 @@ async function generateDJIKMZ() {
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM  = altitudeFt * 0.3048;
   const pitchDeg   = +document.getElementById('pitch').value || -90;
-  const speedMps   = 8; // match your working RC2 file
+  const speedMps   = 8; // matches your working RC2 file
 
-  // 1) prefer preview markers (grid), else compute a fresh grid
-  let waypoints = getWaypointsLonLat();
-  if (!waypoints.length) {
-    waypoints = computeGridLonLatFromPolygon();
-  }
-
+  const waypoints = getWaypointsLonLat();
   if (waypoints.length < 2) {
-    return alert("No grid points found. Increase area or decrease spacing/overlap.");
+    return alert("No grid points found. Try lowering spacing (Overlap ft), increasing area, or setting angle to 0.");
   }
+  console.log("KMZ export waypoint count:", waypoints.length); // should be ~75+
 
-  // 2) Build files with DJI 1.0.6 namespace and required fields
-  const templateKml  = buildTemplateKml(speedMps);
+  const templateKml  = buildTemplateKml(speedMps);            // uses DJI 1.0.6
   const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, speedMps, pitchDeg);
 
-  // 3) KMZ: /wpmz/template.kml + /wpmz/waylines.wpml
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
   zip.file("wpmz/waylines.wpml", waylinesWpml);
@@ -469,7 +546,6 @@ async function generateDJIKMZ() {
   a.download = "dji_rc2_mission.kmz";
   a.click();
 }
-
 
 
 
