@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.7</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.8</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -328,7 +328,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, sp, clampPitch) {
       <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
 
 lonLatPairs.forEach((c, i0) => {
-  const idx = i0 + 1;                 // 1-based to match your working KMZ
+  const idx = i0; // 0-based to avoid crash on your unit
   const [lon, lat] = c;
 
   s += `
@@ -345,9 +345,6 @@ lonLatPairs.forEach((c, i0) => {
 
       <wpml:waypointHeadingParam>
         <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
-        <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
-        <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
-        <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
       </wpml:waypointHeadingParam>
 
       <wpml:waypointTurnParam>
@@ -357,13 +354,13 @@ lonLatPairs.forEach((c, i0) => {
 
       <wpml:useStraightLine>1</wpml:useStraightLine>
 
-      <!-- STATE before actions (so RC2 shows tilt) -->
+      <!-- STATE before actions so UI can show tilt -->
       <wpml:waypointGimbalHeadingParam>
         <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
         <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
       </wpml:waypointGimbalHeadingParam>
 
-      <!-- Actions bound to the same index -->
+      <!-- Single safe action bound to same index -->
       <wpml:actionGroup>
         <wpml:actionGroupId>1</wpml:actionGroupId>
         <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
@@ -380,18 +377,10 @@ lonLatPairs.forEach((c, i0) => {
             <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
           </wpml:actionActuatorFuncParam>
         </wpml:action>
-
-        <wpml:action>
-          <wpml:actionId>2</wpml:actionId>
-          <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
-          <wpml:actionActuatorFuncParam>
-            <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-            <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
-          </wpml:actionActuatorFuncParam>
-        </wpml:action>
       </wpml:actionGroup>
     </Placemark>`;
 });
+
 
 
   s += `
