@@ -119,6 +119,25 @@
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+
+function getWaypointsLonLat() {
+  // Prefer preview markers (grid order)
+  if (window.previewMarkers && previewMarkers.length > 0) {
+    return previewMarkers.map(m => {
+      const ll = m.getLatLng();
+      return [ll.lng, ll.lat]; // lon,lat
+    });
+  }
+  // Fallback: polygon vertices
+  if (window.drawnPolygon) {
+    const latlngs = drawnPolygon.getLatLngs()[0];
+    if (latlngs && latlngs.length) {
+      return latlngs.map(p => [p.lng, p.lat]);
+    }
+  }
+  return [];
+}
+
 function buildTemplateKml(speedMps) {
   const now = Date.now();
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -132,7 +151,7 @@ function buildTemplateKml(speedMps) {
       <wpml:finishAction>goHome</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${speedMps}</wpml:globalTransitionalSpeed>
+      <wpml:globalTransitionalSpeed>${Math.round(speedMps)}</wpml:globalTransitionalSpeed>
       <wpml:droneInfo>
         <wpml:droneEnumValue>68</wpml:droneEnumValue>
         <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
@@ -142,13 +161,12 @@ function buildTemplateKml(speedMps) {
 </kml>`;
 }
 
-
 function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
-  // RC2 accepts 0 for distance/duration; keep it simple and consistent with your good file
+  // RC2 works fine with zeros here (matches your working file)
   const distanceKm = 0;
   const durationS = 0;
 
-  let wpml = `<?xml version="1.0" encoding="UTF-8"?>
+  let s = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
   <Document>
     <wpml:missionConfig>
@@ -156,7 +174,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:finishAction>goHome</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${speedMps}</wpml:globalTransitionalSpeed>
+      <wpml:globalTransitionalSpeed>${Math.round(speedMps)}</wpml:globalTransitionalSpeed>
       <wpml:droneInfo>
         <wpml:droneEnumValue>68</wpml:droneEnumValue>
         <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
@@ -169,10 +187,10 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:distance>${distanceKm}</wpml:distance>
       <wpml:duration>${durationS}</wpml:duration>
       <wpml:autoFlightSpeed>${Math.round(speedMps)}</wpml:autoFlightSpeed>`;
-
+  
   lonLatPairs.forEach((c, i) => {
     const [lon, lat] = c;
-    wpml += `
+    s += `
       <Placemark>
         <Point>
           <coordinates>
@@ -221,12 +239,14 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       </Placemark>`;
   });
 
-  wpml += `
+  s += `
     </Folder>
   </Document>
 </kml>`;
-  return wpml;
+  return s;
 }
+
+
 
 
 
@@ -375,19 +395,18 @@ gridMarkers = [];
   a.click();
 }
 
+
 async function generateDJIKMZ() {
-  if (!drawnPolygon) return alert("Draw a polygon first.");
+  const waypoints = getWaypointsLonLat();
+  if (!waypoints.length) return alert("No waypoints. Run Preview first or draw a polygon.");
 
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM = altitudeFt * 0.3048;
   const pitchDeg = +document.getElementById('pitch').value || -90;
-  const speedMps = 8; // match your working RC2 file
-
-  const lonLatPairs = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
-  if (lonLatPairs.length < 2) return alert("Not enough points.");
+  const speedMps = 8; // matches your working RC2 file
 
   const templateKml = buildTemplateKml(speedMps);
-  const waylinesWpml = buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg);
+  const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, speedMps, pitchDeg);
 
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
@@ -400,6 +419,7 @@ async function generateDJIKMZ() {
   a.download = "dji_rc2_mission.kmz";
   a.click();
 }
+
 
 
     
