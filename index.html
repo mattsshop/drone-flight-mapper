@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.1</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.2</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -278,27 +278,9 @@ async function loadReferenceKMZ() {
   inp.click();
 }
 
-// === 1. Collect values from sidebar ===
-const altitudeFt = parseFloat(document.getElementById('altitude').value);
-const altitudeM = altitudeFt * 0.3048;
-
-const pitchDeg = parseFloat(document.getElementById('pitch').value);
-
-// Read speed and prepare integer + decimal forms
-const speedRaw = parseFloat(document.getElementById('speed').value);
-const spInt    = Math.max(1, Math.min(15, Number.isFinite(speedRaw) ? Math.round(speedRaw) : 8)); // 1..15
-const spDecStr = Number.isFinite(speedRaw) ? speedRaw.toFixed(1) : "8.0"; // decimal string for global speeds
-
-// === 2. Build the files ===
-const templateKml  = buildTemplateKml(spDecStr);                  // decimal here
-const waylinesWpml = buildWaylinesWpml(pts, altitudeM, spInt, spDecStr, pitchDeg); // int + decimal
-
-// === 3. Package into KMZ ===
-createKmzFile(templateKml, waylinesWpml);
 
 
-
-function buildTemplateKml(sp) {
+function buildTemplateKml(spDecStr) {
   const now = Date.now();
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
@@ -311,7 +293,7 @@ function buildTemplateKml(sp) {
       <wpml:finishAction>goHome</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:globalTransitionalSpeed>${spDecStr}</wpml:globalTransitionalSpeed>
       <wpml:droneInfo>
         <wpml:droneEnumValue>68</wpml:droneEnumValue>
         <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
@@ -321,8 +303,8 @@ function buildTemplateKml(sp) {
 </kml>`;
 }
 
-
-function buildWaylinesWpml(lonLatPairs, altitudeM, sp, spInt, spDecStr, clampPitch) {
+function buildWaylinesWpml(lonLatPairs, altitudeM, spInt, spDecStr, clampPitch) {
+  console.log("KMZ export waypoint count:", lonLatPairs.length);
   let s = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
   <Document>
@@ -331,7 +313,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, sp, spInt, spDecStr, clampPit
       <wpml:finishAction>goHome</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:globalTransitionalSpeed>${spDecStr}</wpml:globalTransitionalSpeed>
       <wpml:droneInfo>
         <wpml:droneEnumValue>68</wpml:droneEnumValue>
         <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
@@ -343,81 +325,64 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, sp, spInt, spDecStr, clampPit
       <wpml:waylineId>0</wpml:waylineId>
       <wpml:distance>0</wpml:distance>
       <wpml:duration>0</wpml:duration>
-      <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
+      <wpml:autoFlightSpeed>${spInt}</wpml:autoFlightSpeed>`;
 
-lonLatPairs.forEach((c, i0) => {
+  lonLatPairs.forEach((c, i) => {
+    const [lon, lat] = c;
+    s += `
+    <Placemark>
+      <Point><coordinates>${lon},${lat}</coordinates></Point>
+      <wpml:index>${i}</wpml:index>
+      <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
+      <wpml:waypointSpeed>${spInt}</wpml:waypointSpeed>
 
-const idx = i0;      // 0-based (kept to avoid crash)
-const [lon, lat] = c;
+      <wpml:waypointHeadingParam>
+        <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+        <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+        <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
+        <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
+      </wpml:waypointHeadingParam>
 
-s += `
-  <Placemark>
-    <Point>
-      <coordinates>
-        ${lon},${lat}
-      </coordinates>
-    </Point>
+      <wpml:waypointTurnParam>
+        <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
+        <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
+      </wpml:waypointTurnParam>
 
-    <wpml:index>${idx}</wpml:index>
-    <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
-    <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
+      <wpml:useStraightLine>1</wpml:useStraightLine>
 
-    <wpml:waypointHeadingParam>
-      <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
-      <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
-      <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
-      <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
-    </wpml:waypointHeadingParam>
+      <wpml:waypointGimbalHeadingParam>
+        <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
+        <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
+      </wpml:waypointGimbalHeadingParam>
 
-    <wpml:waypointTurnParam>
-      <wpml:waypointTurnMode>toPointAndStop</wpml:waypointTurnMode>
-      <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
-    </wpml:waypointTurnParam>
+      <wpml:actionGroup>
+        <wpml:actionGroupId>1</wpml:actionGroupId>
+        <wpml:actionGroupStartIndex>${i}</wpml:actionGroupStartIndex>
+        <wpml:actionGroupEndIndex>${i}</wpml:actionGroupEndIndex>
+        <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
+        <wpml:actionTrigger>
+          <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+        </wpml:actionTrigger>
 
-    <wpml:useStraightLine>1</wpml:useStraightLine>
+        <wpml:action>
+          <wpml:actionId>1</wpml:actionId>
+          <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
+          <wpml:actionActuatorFuncParam>
+            <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
+          </wpml:actionActuatorFuncParam>
+        </wpml:action>
 
-    <!-- STATE first; set pitch to 0 like your working file -->
-    <wpml:waypointGimbalHeadingParam>
-      <wpml:waypointGimbalPitchAngle>0</wpml:waypointGimbalPitchAngle>
-      <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
-    </wpml:waypointGimbalHeadingParam>
-
-    <!-- ACTIONS bound to the same index -->
-    <wpml:actionGroup>
-      <wpml:actionGroupId>1</wpml:actionGroupId>
-      <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
-      <wpml:actionGroupEndIndex>${idx}</wpml:actionGroupEndIndex>
-      <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
-      <wpml:actionTrigger>
-        <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
-      </wpml:actionTrigger>
-
-      <!-- Use gimbalEvenlyRotate and include payloadPositionIndex -->
-      <wpml:action>
-        <wpml:actionId>1</wpml:actionId>
-        <wpml:actionActuatorFunc>gimbalEvenlyRotate</wpml:actionActuatorFunc>
-        <wpml:actionActuatorFuncParam>
-          <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
-          <wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle>
-          <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-        </wpml:actionActuatorFuncParam>
-      </wpml:action>
-
-      <!-- keep takePhoto if you want the shutter -->
-      <wpml:action>
-        <wpml:actionId>2</wpml:actionId>
-        <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
-        <wpml:actionActuatorFuncParam>
-          <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-          <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
-        </wpml:actionActuatorFuncParam>
-      </wpml:action>
-    </wpml:actionGroup>
-  </Placemark>`;
-
-});
-
-
+        <wpml:action>
+          <wpml:actionId>2</wpml:actionId>
+          <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
+          <wpml:actionActuatorFuncParam>
+            <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+            <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
+          </wpml:actionActuatorFuncParam>
+        </wpml:action>
+      </wpml:actionGroup>
+    </Placemark>`;
+  });
 
   s += `
     </Folder>
@@ -425,6 +390,9 @@ s += `
 </kml>`;
   return s;
 }
+
+
+
 
 
 
@@ -623,18 +591,20 @@ async function generateDJIKMZ() {
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM  = altitudeFt * 0.3048;
 
-  // Read pitch from UI and clamp to DJI range
-  const pitchIn    = +document.getElementById('pitch').value || -90;
-  const clampPitch = Math.max(-90, Math.min(0, pitchIn));
+// === Read speed & pitch from inputs ===
+const speedRaw   = parseFloat(document.getElementById('speed').value);
+const spInt      = Math.max(1, Math.min(15, Number.isFinite(speedRaw) ? Math.round(speedRaw) : 8)); // 1..15 int
+const spDecStr   = Number.isFinite(speedRaw) ? speedRaw.toFixed(1) : "8.0"; // decimal string
+const pitchRaw   = parseFloat(document.getElementById('pitch').value);
+const clampPitch = Math.max(-90, Math.min(0, pitchRaw)); // clamp to -90..0
 
-  // Read speed from UI, force integer 1..15
-  const speedIn = parseInt(document.getElementById('speed').value, 10);
-  const sp = Math.max(1, Math.min(15, isNaN(speedIn) ? 8 : speedIn));
 
   // Get waypoints (preview markers preferred, else compute grid)
   let waypoints = (window.previewMarkers?.length
     ? previewMarkers.map(m => [m.getLatLng().lng, m.getLatLng().lat])
     : computeGridLonLatFromPolygon());
+
+    
 
   if (!waypoints || waypoints.length < 2) {
     return alert("No grid points found. Try lowering spacing (Overlap ft), increasing area, or setting angle to 0.");
@@ -642,9 +612,10 @@ async function generateDJIKMZ() {
 
   console.log("KMZ export waypoint count:", waypoints.length, "speed(m/s):", sp, "pitch:", clampPitch);
 
-  // Build files with your builders
-  const templateKml  = buildTemplateKml(sp);
-  const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, sp, clampPitch);
+// Build files
+const templateKml  = buildTemplateKml(spDecStr);                       // decimal in template
+const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, spInt, spDecStr, clampPitch); // int + decimal + pitch
+
 
   // Zip into KMZ
   const zip = new JSZip();
