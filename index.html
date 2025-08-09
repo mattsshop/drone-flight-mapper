@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.9</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.1</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -278,6 +278,24 @@ async function loadReferenceKMZ() {
   inp.click();
 }
 
+// === 1. Collect values from sidebar ===
+const altitudeFt = parseFloat(document.getElementById('altitude').value);
+const altitudeM = altitudeFt * 0.3048;
+
+const pitchDeg = parseFloat(document.getElementById('pitch').value);
+
+// Read speed and prepare integer + decimal forms
+const speedRaw = parseFloat(document.getElementById('speed').value);
+const spInt    = Math.max(1, Math.min(15, Number.isFinite(speedRaw) ? Math.round(speedRaw) : 8)); // 1..15
+const spDecStr = Number.isFinite(speedRaw) ? speedRaw.toFixed(1) : "8.0"; // decimal string for global speeds
+
+// === 2. Build the files ===
+const templateKml  = buildTemplateKml(spDecStr);                  // decimal here
+const waylinesWpml = buildWaylinesWpml(pts, altitudeM, spInt, spDecStr, pitchDeg); // int + decimal
+
+// === 3. Package into KMZ ===
+createKmzFile(templateKml, waylinesWpml);
+
 
 
 function buildTemplateKml(sp) {
@@ -304,7 +322,7 @@ function buildTemplateKml(sp) {
 }
 
 
-function buildWaylinesWpml(lonLatPairs, altitudeM, sp, clampPitch) {
+function buildWaylinesWpml(lonLatPairs, altitudeM, sp, spInt, spDecStr, clampPitch) {
   let s = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
   <Document>
