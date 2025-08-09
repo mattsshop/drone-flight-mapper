@@ -91,6 +91,8 @@
 
     <button onclick="loadKMZ()">📂 Load KMZ</button>
 
+    <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
+
     
   <button onclick="generateDJIKMZ()">📦 Download DJI KMZ</button>
 
@@ -217,6 +219,183 @@ function computeGridLonLatFromPolygon() {
   });
 
   return pts;
+}
+
+
+let refCfg = {
+  ns: "http://www.dji.com/wpmz/1.0.6",            // fallback
+  missionConfigXML: "",                            // entire <wpml:missionConfig>...</wpml:missionConfig>
+  folderHeader: {                                  // fallback defaults
+    templateId: "0",
+    executeHeightMode: "relativeToStartPoint",
+    waylineId: "0",
+    distance: "0",
+    duration: "0",
+    autoFlightSpeed: "8"
+  }
+};
+
+// Load a working RC2 KMZ to copy its namespace + missionConfig + header
+async function loadReferenceKMZ() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.kmz';
+  inp.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+
+    // Prefer waylines.wpml for folder header and namespace
+    const waylines = await zip.file('wpmz/waylines.wpml').async('text');
+    const template = await zip.file('wpmz/template.kml').async('text');
+
+    // Namespace
+    const nsMatch = (waylines.match(/xmlns:wpml="([^"]+)"/) || template.match(/xmlns:wpml="([^"]+)"/));
+    if (nsMatch) refCfg.ns = nsMatch[1];
+
+    // missionConfig (copy whole element from template if present, else from waylines)
+    let mc = template.match(/<wpml:missionConfig>[\s\S]*?<\/wpml:missionConfig>/);
+    if (!mc) mc = waylines.match(/<wpml:missionConfig>[\s\S]*?<\/wpml:missionConfig>/);
+    refCfg.missionConfigXML = mc ? mc[0] : "";
+
+    // Folder header fields from waylines
+    const pick = t => (waylines.match(new RegExp(`<wpml:${t}>([\\s\\S]*?)<\\/wpml:${t}>`)) || [,""])[1].trim();
+    refCfg.folderHeader = {
+      templateId: pick("templateId") || "0",
+      executeHeightMode: pick("executeHeightMode") || "relativeToStartPoint",
+      waylineId: pick("waylineId") || "0",
+      distance: pick("distance") || "0",
+      duration: pick("duration") || "0",
+      autoFlightSpeed: pick("autoFlightSpeed") || "8"
+    };
+
+    alert("Reference KMZ loaded. Future exports will mirror its schema.");
+  };
+  inp.click();
+}
+
+// Builders that mirror the reference schema
+function buildTemplateKml(speedMps) {
+  const sp = Math.max(1, Math.round(+refCfg.folderHeader.autoFlightSpeed || speedMps || 8));
+  // If missionConfig missing, synthesize one minimally
+  const missionConfig = refCfg.missionConfigXML || `
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo><wpml:droneEnumValue>68</wpml:droneEnumValue><wpml:droneSubEnumValue>0</wpml:droneSubEnumValue></wpml:droneInfo>
+    </wpml:missionConfig>`;
+
+  const now = Date.now();
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${refCfg.ns}">
+  <Document>
+    <wpml:author>fly</wpml:author>
+    <wpml:createTime>${now}</wpml:createTime>
+    <wpml:updateTime>${now}</wpml:updateTime>
+    ${missionConfig}
+  </Document>
+</kml>`;
+}
+
+function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
+  const sp = Math.max(1, Math.round(+refCfg.folderHeader.autoFlightSpeed || speedMps || 8));
+  const pitch = Math.max(-90, Math.min(0, pitchDeg ?? -90));
+  const missionConfig = refCfg.missionConfigXML || `
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo><wpml:droneEnumValue>68</wpml:droneEnumValue><wpml:droneSubEnumValue>0</wpml:droneSubEnumValue></wpml:droneInfo>
+    </wpml:missionConfig>`;
+
+  const fh = refCfg.folderHeader;
+
+  let s = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${refCfg.ns}">
+  <Document>
+    ${missionConfig}
+    <Folder>
+      <wpml:templateId>${fh.templateId}</wpml:templateId>
+      <wpml:executeHeightMode>${fh.executeHeightMode}</wpml:executeHeightMode>
+      <wpml:waylineId>${fh.waylineId}</wpml:waylineId>
+      <wpml:distance>${fh.distance}</wpml:distance>
+      <wpml:duration>${fh.duration}</wpml:duration>
+      <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
+
+  lonLatPairs.forEach((c, i) => {
+    const [lon, lat] = c;
+    s += `
+      <Placemark>
+        <Point>
+          <coordinates>
+            ${lon},${lat}
+          </coordinates>
+        </Point>
+        <wpml:index>${i}</wpml:index>
+        <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
+        <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
+
+        <wpml:waypointHeadingParam>
+          <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
+          <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
+          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
+          <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
+        </wpml:waypointHeadingParam>
+
+        <wpml:waypointTurnParam>
+          <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
+          <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
+        </wpml:waypointTurnParam>
+
+        <wpml:useStraightLine>1</wpml:useStraightLine>
+
+        <wpml:actionGroup>
+          <wpml:actionGroupId>1</wpml:actionGroupId>
+          <wpml:actionGroupStartIndex>0</wpml:actionGroupStartIndex>
+          <wpml:actionGroupEndIndex>0</wpml:actionGroupEndIndex>
+          <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
+          <wpml:actionTrigger>
+            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+          </wpml:actionTrigger>
+
+          <wpml:action>
+            <wpml:actionId>1</wpml:actionId>
+            <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:gimbalPitchRotateAngle>${pitch}</wpml:gimbalPitchRotateAngle>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+
+          <wpml:action>
+            <wpml:actionId>2</wpml:actionId>
+            <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+        </wpml:actionGroup>
+
+        <wpml:waypointGimbalHeadingParam>
+          <wpml:waypointGimbalPitchAngle>${pitch}</wpml:waypointGimbalPitchAngle>
+          <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
+        </wpml:waypointGimbalHeadingParam>
+      </Placemark>`;
+  });
+
+  s += `
+    </Folder>
+  </Document>
+</kml>`;
+  return s;
 }
 
 
