@@ -60,6 +60,11 @@
     <input type="number" id="overlap" value="50" />
     <label>Gimbal Pitch (°)</label>
     <input type="number" id="pitch" value="-90" min="-90" max="0" />
+
+    <label>Speed (m/s)</label>
+    <input type="number" id="speed" value="8" min="1" max="15" step="1" />
+
+
      <!-- grid angle input -->
     <label>Grid Angle (°)</label>
     <input type="number" id="gridAngle" value="0" step="1" />
@@ -92,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.4</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .0.5</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -592,18 +597,31 @@ async function generateDJIKMZ() {
 
   const altitudeFt = +document.getElementById('altitude').value || 100;
   const altitudeM  = altitudeFt * 0.3048;
-  const pitchDeg   = +document.getElementById('pitch').value || -90;
-  const speedMps   = 8; // matches your working RC2 file
 
-  const waypoints = getWaypointsLonLat();
-  if (waypoints.length < 2) {
+  // Read pitch from UI and clamp to DJI range
+  const pitchIn    = +document.getElementById('pitch').value || -90;
+  const clampPitch = Math.max(-90, Math.min(0, pitchIn));
+
+  // Read speed from UI, force integer 1..15
+  const speedIn = parseInt(document.getElementById('speed')?.value, 10);
+  const sp      = Math.max(1, Math.min(15, isNaN(speedIn) ? 8 : speedIn));
+
+  // Get waypoints (preview markers preferred, else compute grid)
+  let waypoints = (window.previewMarkers?.length
+    ? previewMarkers.map(m => [m.getLatLng().lng, m.getLatLng().lat])
+    : computeGridLonLatFromPolygon());
+
+  if (!waypoints || waypoints.length < 2) {
     return alert("No grid points found. Try lowering spacing (Overlap ft), increasing area, or setting angle to 0.");
   }
-  console.log("KMZ export waypoint count:", waypoints.length); // should be ~75+
 
-  const templateKml  = buildTemplateKml(speedMps);            // uses DJI 1.0.6
-  const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, speedMps, pitchDeg);
+  console.log("KMZ export waypoint count:", waypoints.length, "speed(m/s):", sp, "pitch:", clampPitch);
 
+  // Build files with your builders
+  const templateKml  = buildTemplateKml(sp);                     // uses integer speed
+  const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, sp, clampPitch);
+
+  // Zip into KMZ
   const zip = new JSZip();
   zip.file("wpmz/template.kml", templateKml);
   zip.file("wpmz/waylines.wpml", waylinesWpml);
