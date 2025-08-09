@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html>
+  
+<head>
+  <title>DJI Mapping Tool – Full Bundle</title>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; }
+    #sidebar {
+      width: 300px;
+      padding: 15px;
+      background: #f0f0f0;
+      border-right: 1px solid #ccc;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    #map { flex-grow: 1; }
+    label { display: block; margin-top: 10px; }
+    input, select { width: 100%; padding: 5px; margin-top: 4px; }
+    button { margin-top: 10px; padding: 8px 12px; width: 100%; }
+  </style>
+
+  <!-- Leaflet core -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Google Maps API -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAtJhug_LwAglT-pJL3RUFyOStmFVEnx7M&libraries=places" async defer></script>
+
+  <!-- GoogleMutant plugin (pinned version) -->
+  <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.12.0/dist/Leaflet.GoogleMutant.js"></script>
+
+
+  <!-- Leaflet Geocoder -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+  <!-- Leaflet.pm -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.pm/dist/leaflet.pm.css" />
+  <script src="https://unpkg.com/leaflet.pm/dist/leaflet.pm.min.js"></script>
+
+  <!-- Turf.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+
+
+
+</head>
+
+
+  
+<body>
+  <div id="sidebar">
+    <h3>Mapping Settings</h3>
+    <label>Altitude (ft)</label>
+    <input type="number" id="altitude" value="100" />
+    <label>Side Overlap (ft)</label>
+    <input type="number" id="overlap" value="50" />
+    <label>Gimbal Pitch (°)</label>
+    <input type="number" id="pitch" value="-90" min="-90" max="0" />
+     <!-- grid angle input -->
+    <label>Grid Angle (°)</label>
+    <input type="number" id="gridAngle" value="0" step="1" />
+
+    <h4>Camera Settings (Optional)</h4>
+
+
+<label for="sensorWidth">Sensor Width (mm)</label>
+<input type="number" id="sensorWidth" value="13.2" step="0.1" />
+
+<label for="focalLength">Focal Length (mm)</label>
+<input type="number" id="focalLength" value="8.8" step="0.1" />
+
+<label for="imageWidth">Image Width (px)</label>
+<input type="number" id="imageWidth" value="5472" step="1" />
+
+<label for="desiredOverlap">Desired Side Overlap (%)</label>
+<input type="number" id="desiredOverlap" value="70" step="1" />
+
+<button onclick="calculateOverlap()">📷 Suggest Overlap</button>
+<p id="suggestedOverlap" style="font-size: 0.9em; color: #444;"></p>
+
+
+
+    
+    <p><strong>Use the toolbar on the map to draw polygons.</strong></p>
+    <button onclick="resetArea()">🧹 Clear Area</button>
+    <button onclick="generateKML()">📥 Download KML</button>
+
+    <button onclick="loadKMZ()">📂 Load KMZ</button>
+
+    <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
+
+    
+  <button onclick="generateDJIKMZ()">📦 Download DJI KMZ</button>
+
+    
+        <button onclick="saveMap()">💾 Save Map</button>
+    <button onclick="loadMap()">📂 Load Map</button>
+    <button onclick="toggleMap()">🗺 Toggle Satellite</button>
+    <button onclick="askLocation()">📍 Use My Location</button>
+    <button onclick="previewGrid()">🔍 Preview Waypoints</button>
+  </div>
+  <div id="map"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet.pm/dist/leaflet.pm.min.js"></script>
+  <script>
+    let map;
+    let baseMaps = {};
+    let currentLayer = 'street';
+    let drawnPolygon = null;
+    let gridMarkers = [];
+
+
+    function haversineMeters(a, b) {
+  const R = 6371000, toRad = d => d * Math.PI/180;
+  const [lon1, lat1] = a, [lon2, lat2] = b;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const s = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+
+
+function getWaypointsLonLat() {
+  // If user already hit “Preview”, use those (keeps the same order you drew)
+  if (window.previewMarkers && previewMarkers.length) {
+    return previewMarkers.map(m => [m.getLatLng().lng, m.getLatLng().lat]);
+  }
+  // Otherwise, compute a fresh grid
+  return computeGridLonLatFromPolygon();
+}
+
+
+
+async function loadKMZ() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.kmz';
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Prefer DJI RC2 file first
+    let kmlText = null;
+    if (zip.file('wpmz/waylines.wpml')) {
+      kmlText = await zip.file('wpmz/waylines.wpml').async('text');
+    } else if (zip.file('doc.kml')) {
+      kmlText = await zip.file('doc.kml').async('text');
+    } else {
+      // Fallback: first *.kml inside zip
+      const anyKml = Object.values(zip.files).find(f => f.name.toLowerCase().endsWith('.kml'));
+      if (anyKml) kmlText = await anyKml.async('text');
+    }
+    if (!kmlText) return alert('No KML/WPML found in KMZ.');
+
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(kmlText, 'text/xml');
+    const placemarks = xml.getElementsByTagName('Placemark');
+
+    const pts = [];
+    for (let i = 0; i < placemarks.length; i++) {
+      const coordsEl = placemarks[i].getElementsByTagName('coordinates')[0];
+      if (!coordsEl) continue;
+      // DJI stores "lon,lat" (possibly with whitespace/newlines)
+      const raw = coordsEl.textContent.trim();
+      if (!raw) continue;
+      const parts = raw.split(/[\s,]+/).filter(Boolean);
+      if (parts.length < 2) continue;
+      const lon = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lat, lon]);
+    }
+
+    if (!pts.length) return alert('No point Placemarks found.');
+    const poly = L.polyline(pts, { weight: 2 }).addTo(map);
+    pts.forEach(p => L.circleMarker(p, { radius: 4 }).addTo(map));
+    map.fitBounds(poly.getBounds());
+  };
+  input.click();
+}
+
+
+function computeGridLonLatFromPolygon() {
+  if (!drawnPolygon) return [];
+
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const angleDeg  = +document.getElementById('gridAngle').value || 0;
+
+  // Convert spacing to degrees (≈ meters/111000)
+  const spacingDeg = (overlapFt * 0.3048) / 111000;
+
+  const ring = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  if (!ring.length) return [];
+  const closed = ring[0][0] === ring[ring.length-1][0] && ring[0][1] === ring[ring.length-1][1]
+    ? ring : [...ring, ring[0]];
+
+  const area     = turf.polygon([closed]);
+  const centroid = turf.centroid(area);
+
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox        = turf.bbox(rotatedArea);
+
+  // Build grid, clip to polygon, rotate back
+  const rawGrid     = turf.pointGrid(bbox, spacingDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const features    = clippedGrid.features.map(pt => turf.transformRotate(pt, angleDeg, { pivot: centroid }));
+
+  // Extract lon,lat
+  const pts = features.map(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    return [lng, lat];
+  });
+
+  return pts;
+}
+
+
+let refCfg = {
+  ns: "http://www.dji.com/wpmz/1.0.6",            // fallback
+  missionConfigXML: "",                            // entire <wpml:missionConfig>...</wpml:missionConfig>
+  folderHeader: {                                  // fallback defaults
+    templateId: "0",
+    executeHeightMode: "relativeToStartPoint",
+    waylineId: "0",
+    distance: "0",
+    duration: "0",
+    autoFlightSpeed: "8"
+  }
+};
+
+// Load a working RC2 KMZ to copy its namespace + missionConfig + header
+async function loadReferenceKMZ() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.kmz';
+  inp.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+
+    // Prefer waylines.wpml for folder header and namespace
+    const waylines = await zip.file('wpmz/waylines.wpml').async('text');
+    const template = await zip.file('wpmz/template.kml').async('text');
+
+    // Namespace
+    const nsMatch = (waylines.match(/xmlns:wpml="([^"]+)"/) || template.match(/xmlns:wpml="([^"]+)"/));
+    if (nsMatch) refCfg.ns = nsMatch[1];
+
+    // missionConfig (copy whole element from template if present, else from waylines)
+    let mc = template.match(/<wpml:missionConfig>[\s\S]*?<\/wpml:missionConfig>/);
+    if (!mc) mc = waylines.match(/<wpml:missionConfig>[\s\S]*?<\/wpml:missionConfig>/);
+    refCfg.missionConfigXML = mc ? mc[0] : "";
+
+    // Folder header fields from waylines
+    const pick = t => (waylines.match(new RegExp(`<wpml:${t}>([\\s\\S]*?)<\\/wpml:${t}>`)) || [,""])[1].trim();
+    refCfg.folderHeader = {
+      templateId: pick("templateId") || "0",
+      executeHeightMode: pick("executeHeightMode") || "relativeToStartPoint",
+      waylineId: pick("waylineId") || "0",
+      distance: pick("distance") || "0",
+      duration: pick("duration") || "0",
+      autoFlightSpeed: pick("autoFlightSpeed") || "8"
+    };
+
+    alert("Reference KMZ loaded. Future exports will mirror its schema.");
+  };
+  inp.click();
+}
+
+
+
+function buildTemplateKml(speedMps) {
+  const now = Date.now(), sp = Math.max(1, Math.round(speedMps));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
+  <Document>
+    <wpml:author>fly</wpml:author>
+    <wpml:createTime>${now}</wpml:createTime>
+    <wpml:updateTime>${now}</wpml:updateTime>
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo>
+        <wpml:droneEnumValue>68</wpml:droneEnumValue>
+        <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
+      </wpml:droneInfo>
+    </wpml:missionConfig>
+  </Document>
+</kml>`;
+}
+
+
+function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
+  const sp = Math.max(1, Math.round(speedMps));            // integers only
+  const clampPitch = Math.max(-90, Math.min(0, pitchDeg)); // -90..0
+
+  let s = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
+  <Document>
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo>
+        <wpml:droneEnumValue>68</wpml:droneEnumValue>
+        <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
+      </wpml:droneInfo>
+    </wpml:missionConfig>
+    <Folder>
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>
+      <wpml:waylineId>0</wpml:waylineId>
+      <wpml:distance>0</wpml:distance>
+      <wpml:duration>0</wpml:duration>
+      <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
+
+  lonLatPairs.forEach((c, i0) => {
+    const idx = i0 + 1; // 1-based index for RC2
+    const [lon, lat] = c;
+    s += `
+      <Placemark>
+        <Point>
+          <coordinates>
+            ${lon},${lat}
+          </coordinates>
+        </Point>
+
+        <wpml:index>${idx}</wpml:index>
+        <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
+        <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
+
+        <wpml:waypointHeadingParam>
+          <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
+          <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
+          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
+          <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
+        </wpml:waypointHeadingParam>
+
+        <wpml:waypointTurnParam>
+          <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
+          <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
+        </wpml:waypointTurnParam>
+
+        <wpml:useStraightLine>1</wpml:useStraightLine>
+
+        <wpml:actionGroup>
+          <wpml:actionGroupId>1</wpml:actionGroupId>
+          <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
+          <wpml:actionGroupEndIndex>${idx}</wpml:actionGroupEndIndex>
+          <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
+          <wpml:actionTrigger>
+            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+          </wpml:actionTrigger>
+
+          <wpml:action>
+            <wpml:actionId>1</wpml:actionId>
+            <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+
+          <wpml:action>
+            <wpml:actionId>2</wpml:actionId>
+            <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+        </wpml:actionGroup>
+
+        <wpml:waypointGimbalHeadingParam>
+          <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
+          <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
+        </wpml:waypointGimbalHeadingParam>
+      </Placemark>`;
+  });
+
+  s += `
+    </Folder>
+  </Document>
+</kml>`;
+  return s;
+}
+
+
+
+
+
+
+function initMap(lat = 34.05, lng = -118.25) {
+  console.log("Leaflet version:", L.version);
+  console.log("GoogleMutant function exists:", !!(L.gridLayer && L.gridLayer.googleMutant));
+
+  if (!L.gridLayer || !L.gridLayer.googleMutant) {
+    alert("GoogleMutant plugin not loaded! Check script order or network tab.");
+    return;
+  }
+
+  map = L.map('map', {
+    center: [lat, lng],
+    zoom: 16,
+    maxZoom: 22
+  });
+
+
+      baseMaps = {
+  street: L.gridLayer.googleMutant({
+    type: 'roadmap' // Google Maps Roadmap
+  }),
+  satellite: L.gridLayer.googleMutant({
+    type: 'satellite' // Google Maps Satellite
+  }),
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 22,
+    attribution: '&copy; OpenStreetMap contributors'
+  }),
+  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 22,
+    attribution: 'Tiles &copy; Esri'
+  })
+};
+
+
+      baseMaps[currentLayer].addTo(map);
+      L.Control.geocoder().addTo(map);
+
+      map.pm.addControls({ drawPolygon: true, editMode: true, dragMode: true, removalMode: true });
+
+      map.on('pm:create', e => {
+        if (drawnPolygon) {
+          map.removeLayer(drawnPolygon);
+          gridMarkers.forEach(m => m.remove());
+          gridMarkers = [];
+        }
+        drawnPolygon = e.layer;
+      });
+    }
+
+window.onload = function() {
+  function waitForMutant() {
+    if (L.gridLayer && L.gridLayer.googleMutant) {
+      navigator.geolocation.getCurrentPosition(
+        pos => initMap(pos.coords.latitude, pos.coords.longitude),
+        () => initMap(),
+        { timeout: 5000 }
+      );
+    } else {
+      console.warn("Waiting for GoogleMutant to load...");
+      setTimeout(waitForMutant, 100);
+    }
+  }
+  waitForMutant();
+};
+
+
+    function toggleMap() {
+      map.removeLayer(baseMaps[currentLayer]);
+      currentLayer = currentLayer === 'street' ? 'satellite' : 'street';
+      baseMaps[currentLayer].addTo(map);
+    }
+
+function resetArea() {
+  if (drawnPolygon) map.removeLayer(drawnPolygon);
+  drawnPolygon = null;
+
+  gridMarkers.forEach(m => m.remove());
+  gridMarkers = [];
+
+  previewMarkers.forEach(m => m.remove());
+  previewMarkers = [];
+
+  if (previewLine) {
+    map.removeLayer(previewLine);
+    previewLine = null;
+  }
+}
+
+
+function computeGridLonLatFromPolygon() {
+  if (!drawnPolygon) return [];
+
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const angleDeg  = +document.getElementById('gridAngle').value || 0;
+
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+  // polygon to [lng,lat] ring
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  if (!coords.length) return [];
+  // close ring for Turf
+  coords.push(coords[0]);
+
+  const area     = turf.polygon([coords]);
+  const centroid = turf.centroid(area);
+
+  // rotate polygon to align grid
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox        = turf.bbox(rotatedArea);
+
+  // generate and clip grid
+  const rawGrid     = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+
+  // rotate points back
+  const rotatedBack = clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+  );
+
+  // return as [lon,lat] in grid order
+  return rotatedBack.map(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    return [lng, lat];
+  });
+}
+
+
+function generateKML() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const pitch = +document.getElementById('pitch').value || -90;
+  const altitudeM = altitudeFt * 0.3048;
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  coords.push(coords[0]);
+
+  const area = turf.polygon([coords]);
+  const angleDeg = +document.getElementById("gridAngle").value || 0;
+  const centroid = turf.centroid(area);
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox = turf.bbox(rotatedArea);
+  const rawGrid = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const rotatedBack = turf.featureCollection(clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+));
+
+  if (!rotatedBack.features.length) return alert("No grid points generated.");
+
+gridMarkers.forEach(m => m.remove());
+gridMarkers = [];
+
+  let pathCoords = []; // Store LatLngs for polyline path
+  let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>DJI Custom Polygon Mission</name>`;
+
+    rotatedBack.features.forEach((pt, i) => {
+    const [lng, lat] = pt.geometry.coordinates;
+    gridMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map));
+    pathCoords.push([lat, lng]);
+    kml += `
+<Placemark>
+<name>WP${i + 1}</name>
+<description>Pitch: ${pitch}°</description>
+<Point><coordinates>${lng},${lat},${altitudeM.toFixed(1)}</coordinates></Point>
+</Placemark>`;
+  });
+
+  // Add polyline path to map
+  L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
+
+  kml += "</Document>\n</kml>";
+  const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dji_custom_polygon.kml";
+  a.click();
+}
+
+
+async function generateDJIKMZ() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const altitudeM  = altitudeFt * 0.3048;
+  const pitchDeg   = +document.getElementById('pitch').value || -90;
+  const speedMps   = 8; // matches your working RC2 file
+
+  const waypoints = getWaypointsLonLat();
+  if (waypoints.length < 2) {
+    return alert("No grid points found. Try lowering spacing (Overlap ft), increasing area, or setting angle to 0.");
+  }
+  console.log("KMZ export waypoint count:", waypoints.length); // should be ~75+
+
+  const templateKml  = buildTemplateKml(speedMps);            // uses DJI 1.0.6
+  const waylinesWpml = buildWaylinesWpml(waypoints, altitudeM, speedMps, pitchDeg);
+
+  const zip = new JSZip();
+  zip.file("wpmz/template.kml", templateKml);
+  zip.file("wpmz/waylines.wpml", waylinesWpml);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = "dji_rc2_mission.kmz";
+  a.click();
+}
+
+
+
+    
+
+
+    // Litchi export removed
+function generateLitchi() {
+      if (!drawnPolygon) return alert("Draw a polygon first.");
+      const altitudeFt = +document.getElementById('altitude').value || 100;
+      const pitch = +document.getElementById('pitch').value || -90;
+      const overlapFt = +document.getElementById('overlap').value || 50;
+      const altitudeM = (altitudeFt * 0.3048).toFixed(1);
+      const overlapDeg = (overlapFt * 0.3048) / 111000;
+      const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+      coords.push(coords[0]);
+      const area = turf.polygon([coords]);
+      const grid = turf.pointGrid(turf.bbox(area), overlapDeg, { units: 'degrees', mask: area });
+      if (!grid.features.length) return alert("No grid points generated.");
+      let csv = "index,latitude,longitude,altitude(m),heading,curvesize,rotationdir,gimbalpitch,actiontype,actionparam";
+      grid.features.forEach((pt, i) => {
+        const [lng, lat] = pt.geometry.coordinates;
+        csv += `${i},${lat.toFixed(8)},${lng.toFixed(8)},${altitudeM},0,0,1,${pitch},0,0
+`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "litchi_waypoints.csv"; a.click();
+    }
+
+    function saveMap() {
+      if (!drawnPolygon) return alert("Draw a polygon first.");
+      const latlngs = drawnPolygon.getLatLngs()[0].map(p => ({ lat: p.lat, lng: p.lng }));
+      const blob = new Blob([JSON.stringify(latlngs)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "saved_map.json"; a.click();
+    }
+
+    function loadMap() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = event => {
+          const data = JSON.parse(event.target.result);
+          const latlngs = data.map(p => [p.lat, p.lng]);
+          if (drawnPolygon) map.removeLayer(drawnPolygon);
+          drawnPolygon = L.polygon(latlngs, { color: 'purple' }).addTo(map);
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+   
+    function askLocation() {
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+    },
+    err => {
+      alert("Unable to get location: " + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 5000 }
+  );
+}
+
+let previewMarkers = [];
+let previewLine = null;
+
+function previewGrid() {
+  if (!drawnPolygon) return alert("Draw a polygon first.");
+
+  // Clear previous preview
+  previewMarkers.forEach(m => m.remove());
+  previewMarkers = [];
+  if (previewLine) {
+    map.removeLayer(previewLine);
+    previewLine = null;
+  }
+
+  const altitudeFt = +document.getElementById('altitude').value || 100;
+  const overlapFt = +document.getElementById('overlap').value || 50;
+  const altitudeM = altitudeFt * 0.3048;
+  const overlapDeg = (overlapFt * 0.3048) / 111000;
+
+  const coords = drawnPolygon.getLatLngs()[0].map(p => [p.lng, p.lat]);
+  coords.push(coords[0]);
+
+  const area = turf.polygon([coords]);
+  const angleDeg = +document.getElementById("gridAngle").value || 0;
+  const centroid = turf.centroid(area);
+  const rotatedArea = turf.transformRotate(area, -angleDeg, { pivot: centroid });
+  const bbox = turf.bbox(rotatedArea);
+  const rawGrid = turf.pointGrid(bbox, overlapDeg, { units: 'degrees' });
+  const clippedGrid = turf.pointsWithinPolygon(rawGrid, rotatedArea);
+  const rotatedBack = turf.featureCollection(clippedGrid.features.map(pt =>
+    turf.transformRotate(pt, angleDeg, { pivot: centroid })
+  ));
+
+  if (!rotatedBack.features.length) return alert("No preview points generated.");
+
+  let pathCoords = [];
+
+  rotatedBack.features.forEach(pt => {
+    const [lng, lat] = pt.geometry.coordinates;
+    const marker = L.circleMarker([lat, lng], { radius: 4, color: 'green' }).addTo(map);
+    previewMarkers.push(marker);
+    pathCoords.push([lat, lng]);
+  });
+
+  // Draw the connecting polyline
+  previewLine = L.polyline(pathCoords, { color: 'blue', weight: 2 }).addTo(map);
+}
+
+
+function calculateOverlap() {
+  const altitudeFt = +document.getElementById("altitude").value || 100;
+  const sensorWidth = +document.getElementById("sensorWidth").value || 13.2;
+  const focalLength = +document.getElementById("focalLength").value || 8.8;
+  const imageWidth = +document.getElementById("imageWidth").value || 5472;
+  const desiredOverlap = +document.getElementById("desiredOverlap").value || 70;
+
+  const altitudeM = altitudeFt * 0.3048;
+
+  const gsd = (sensorWidth * altitudeM * 100) / (focalLength * imageWidth); // cm/pixel
+  const groundWidthM = (imageWidth * gsd) / 100;
+
+  const step = groundWidthM * (1 - desiredOverlap / 100); // meters
+  const stepFt = step / 0.3048;
+
+  document.getElementById("overlap").value = stepFt.toFixed(1);
+  document.getElementById("suggestedOverlap").textContent =
+    `Ground width ≈ ${groundWidthM.toFixed(1)}m, suggested spacing ≈ ${stepFt.toFixed(1)} ft`;
+}
+
+
+    
+  </script>
+</body>
+</html>
