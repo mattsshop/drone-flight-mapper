@@ -275,129 +275,6 @@ async function loadReferenceKMZ() {
   inp.click();
 }
 
-// Builders that mirror the reference schema
-function buildTemplateKml(speedMps) {
-  const sp = Math.max(1, Math.round(+refCfg.folderHeader.autoFlightSpeed || speedMps || 8));
-  // If missionConfig missing, synthesize one minimally
-  const missionConfig = refCfg.missionConfigXML || `
-    <wpml:missionConfig>
-      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
-      <wpml:finishAction>goHome</wpml:finishAction>
-      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
-      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
-      <wpml:droneInfo><wpml:droneEnumValue>68</wpml:droneEnumValue><wpml:droneSubEnumValue>0</wpml:droneSubEnumValue></wpml:droneInfo>
-    </wpml:missionConfig>`;
-
-  const now = Date.now();
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${refCfg.ns}">
-  <Document>
-    <wpml:author>fly</wpml:author>
-    <wpml:createTime>${now}</wpml:createTime>
-    <wpml:updateTime>${now}</wpml:updateTime>
-    ${missionConfig}
-  </Document>
-</kml>`;
-}
-
-function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
-  const sp = Math.max(1, Math.round(+refCfg.folderHeader.autoFlightSpeed || speedMps || 8));
-  const pitch = Math.max(-90, Math.min(0, pitchDeg ?? -90));
-  const missionConfig = refCfg.missionConfigXML || `
-    <wpml:missionConfig>
-      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
-      <wpml:finishAction>goHome</wpml:finishAction>
-      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
-      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:globalTransitionalSpeed>${sp}</wpml:globalTransitionalSpeed>
-      <wpml:droneInfo><wpml:droneEnumValue>68</wpml:droneEnumValue><wpml:droneSubEnumValue>0</wpml:droneSubEnumValue></wpml:droneInfo>
-    </wpml:missionConfig>`;
-
-  const fh = refCfg.folderHeader;
-
-  let s = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${refCfg.ns}">
-  <Document>
-    ${missionConfig}
-    <Folder>
-      <wpml:templateId>${fh.templateId}</wpml:templateId>
-      <wpml:executeHeightMode>${fh.executeHeightMode}</wpml:executeHeightMode>
-      <wpml:waylineId>${fh.waylineId}</wpml:waylineId>
-      <wpml:distance>${fh.distance}</wpml:distance>
-      <wpml:duration>${fh.duration}</wpml:duration>
-      <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
-
-  lonLatPairs.forEach((c, i) => {
-    const [lon, lat] = c;
-    s += `
-      <Placemark>
-        <Point>
-          <coordinates>
-            ${lon},${lat}
-          </coordinates>
-        </Point>
-        <wpml:index>${i}</wpml:index>
-        <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
-        <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
-
-        <wpml:waypointHeadingParam>
-          <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
-          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
-          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
-          <wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>
-          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
-          <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
-        </wpml:waypointHeadingParam>
-
-        <wpml:waypointTurnParam>
-          <wpml:waypointTurnMode>toPointAndStopWithContinuityCurvature</wpml:waypointTurnMode>
-          <wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist>
-        </wpml:waypointTurnParam>
-
-        <wpml:useStraightLine>1</wpml:useStraightLine>
-
-        <wpml:actionGroup>
-          <wpml:actionGroupId>1</wpml:actionGroupId>
-          <wpml:actionGroupStartIndex>0</wpml:actionGroupStartIndex>
-          <wpml:actionGroupEndIndex>0</wpml:actionGroupEndIndex>
-          <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
-          <wpml:actionTrigger>
-            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
-          </wpml:actionTrigger>
-
-          <wpml:action>
-            <wpml:actionId>1</wpml:actionId>
-            <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
-            <wpml:actionActuatorFuncParam>
-              <wpml:gimbalPitchRotateAngle>${pitch}</wpml:gimbalPitchRotateAngle>
-            </wpml:actionActuatorFuncParam>
-          </wpml:action>
-
-          <wpml:action>
-            <wpml:actionId>2</wpml:actionId>
-            <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
-            <wpml:actionActuatorFuncParam>
-              <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
-              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>
-            </wpml:actionActuatorFuncParam>
-          </wpml:action>
-        </wpml:actionGroup>
-
-        <wpml:waypointGimbalHeadingParam>
-          <wpml:waypointGimbalPitchAngle>${pitch}</wpml:waypointGimbalPitchAngle>
-          <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
-        </wpml:waypointGimbalHeadingParam>
-      </Placemark>`;
-  });
-
-  s += `
-    </Folder>
-  </Document>
-</kml>`;
-  return s;
-}
-
 
 
 function buildTemplateKml(speedMps) {
@@ -422,10 +299,11 @@ function buildTemplateKml(speedMps) {
   </Document>
 </kml>`;
 }
+
+
 function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
-  // RC2 likes integer speeds in these fields
-  const sp = Math.max(1, Math.round(speedMps));            // 1…15 typical
-  const clampPitch = Math.max(-90, Math.min(0, pitchDeg)); // RC2 expects -90..0
+  const sp = Math.max(1, Math.round(speedMps));            // integers only
+  const clampPitch = Math.max(-90, Math.min(0, pitchDeg)); // -90..0
 
   let s = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.6">
@@ -449,7 +327,8 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
       <wpml:duration>0</wpml:duration>
       <wpml:autoFlightSpeed>${sp}</wpml:autoFlightSpeed>`;
 
-  lonLatPairs.forEach((c, i) => {
+  lonLatPairs.forEach((c, i0) => {
+    const idx = i0 + 1; // 1-based index for RC2
     const [lon, lat] = c;
     s += `
       <Placemark>
@@ -459,12 +338,10 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
           </coordinates>
         </Point>
 
-        <!-- REQUIRED indexes & core params -->
-        <wpml:index>${i}</wpml:index>
+        <wpml:index>${idx}</wpml:index>
         <wpml:executeHeight>${altitudeM.toFixed(1)}</wpml:executeHeight>
         <wpml:waypointSpeed>${sp}</wpml:waypointSpeed>
 
-        <!-- Heading/POI/Turn (safe defaults that RC2 accepts) -->
         <wpml:waypointHeadingParam>
           <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
           <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
@@ -481,27 +358,23 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
 
         <wpml:useStraightLine>1</wpml:useStraightLine>
 
-        <!-- CAMERA/GIMBAL ACTIONS -->
         <wpml:actionGroup>
           <wpml:actionGroupId>1</wpml:actionGroupId>
-          <wpml:actionGroupStartIndex>0</wpml:actionGroupStartIndex>
-          <wpml:actionGroupEndIndex>0</wpml:actionGroupEndIndex>
+          <wpml:actionGroupStartIndex>${idx}</wpml:actionGroupStartIndex>
+          <wpml:actionGroupEndIndex>${idx}</wpml:actionGroupEndIndex>
           <wpml:actionGroupMode>parallel</wpml:actionGroupMode>
           <wpml:actionTrigger>
             <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
           </wpml:actionTrigger>
 
-          <!-- Gimbal tilt -->
           <wpml:action>
             <wpml:actionId>1</wpml:actionId>
             <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
             <wpml:actionActuatorFuncParam>
               <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
-              <!-- Optional: wpml:gimbalYawRotateAngle -->
             </wpml:actionActuatorFuncParam>
           </wpml:action>
 
-          <!-- Optional: Take a photo at each point (remove if not desired) -->
           <wpml:action>
             <wpml:actionId>2</wpml:actionId>
             <wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>
@@ -512,7 +385,6 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
           </wpml:action>
         </wpml:actionGroup>
 
-        <!-- Persist gimbal angles state -->
         <wpml:waypointGimbalHeadingParam>
           <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
           <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
@@ -526,6 +398,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, speedMps, pitchDeg) {
 </kml>`;
   return s;
 }
+
 
 
 
