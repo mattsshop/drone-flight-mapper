@@ -97,7 +97,7 @@
     <button onclick="loadReferenceKMZ()">🔧 Load Reference KMZ</button>
 
     
-    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.3</button>
+    <button onclick="generateDJIKMZ()">📦 Download DJI KMZ .1.4</button>
 
     
         <button onclick="saveMap()">💾 Save Map</button>
@@ -351,7 +351,7 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, spInt, spDecStr, clampPitch) 
       <wpml:useStraightLine>1</wpml:useStraightLine>
 
       <wpml:waypointGimbalHeadingParam>
-        <wpml:waypointGimbalPitchAngle>${clampPitch}</wpml:waypointGimbalPitchAngle>
+        <wpml:waypointGimbalPitchAngle>0</wpml:waypointGimbalPitchAngle>
         <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
       </wpml:waypointGimbalHeadingParam>
 
@@ -364,13 +364,15 @@ function buildWaylinesWpml(lonLatPairs, altitudeM, spInt, spDecStr, clampPitch) 
           <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
         </wpml:actionTrigger>
 
-        <wpml:action>
-          <wpml:actionId>1</wpml:actionId>
-          <wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>
-          <wpml:actionActuatorFuncParam>
-            <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
-          </wpml:actionActuatorFuncParam>
-        </wpml:action>
+       <wpml:action>
+  <wpml:actionId>1</wpml:actionId>
+  <wpml:actionActuatorFunc>gimbalEvenlyRotate</wpml:actionActuatorFunc>
+  <wpml:actionActuatorFuncParam>
+    <wpml:gimbalPitchRotateAngle>${clampPitch}</wpml:gimbalPitchRotateAngle>
+    <wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle>
+    <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
+  </wpml:actionActuatorFuncParam>
+</wpml:action>
 
         <wpml:action>
           <wpml:actionId>2</wpml:actionId>
